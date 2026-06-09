@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RinoDesk — System Architecture</title>
+<style>
+  :root{
+    --bg:#0b0912; --panel:#15111f; --card:#1b1630; --card2:#221a3a;
+    --border:#2e2747; --text:#ece9f5; --muted:#9a91b8;
+    --primary:#8b5cf6; --primary-soft:rgba(139,92,246,.15);
+    --client:#22d3ee; --auth:#f59e0b; --api:#8b5cf6; --ai:#ec4899; --data:#34d399; --integration:#fb923c;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  body{
+    min-height:100vh;
+    background-image:
+      radial-gradient(900px circle at 0% 0%, rgba(139,92,246,.10), transparent 42%),
+      radial-gradient(700px circle at 100% 0%, rgba(236,72,153,.08), transparent 42%);
+  }
+  header{padding:26px 30px 8px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;
+    background:linear-gradient(135deg,#8b5cf6,#6d28d9);box-shadow:0 6px 20px rgba(139,92,246,.35);font-size:20px}
+  h1{font-size:22px;margin:0;letter-spacing:-.3px}
+  .sub{color:var(--muted);font-size:13px;margin-top:2px}
+  .wrap{display:flex;gap:20px;padding:14px 30px 40px;align-items:flex-start;flex-wrap:wrap}
+  .stage{flex:1 1 720px;min-width:320px;background:var(--panel);border:1px solid var(--border);
+    border-radius:16px;padding:14px;overflow:auto}
+  .canvas{position:relative;width:1200px;height:700px;margin:0 auto}
+  svg.edges{position:absolute;inset:0;width:1200px;height:700px;pointer-events:none}
+  .edge{fill:none;stroke:var(--border);stroke-width:2;transition:stroke .25s, stroke-width .25s, opacity .25s}
+  .edge.active{stroke:var(--primary);stroke-width:3;stroke-dasharray:7 6;animation:dash 1s linear infinite}
+  .edge.dim{opacity:.12}
+  @keyframes dash{to{stroke-dashoffset:-26}}
+  .node{position:absolute;border-radius:14px;background:var(--card);border:1px solid var(--border);
+    padding:12px 14px;cursor:pointer;transition:transform .18s, box-shadow .25s, border-color .25s, opacity .25s;
+    display:flex;flex-direction:column;justify-content:center;overflow:hidden}
+  .node:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(0,0,0,.45)}
+  .node .t{font-weight:650;font-size:14px;display:flex;align-items:center;gap:7px}
+  .node .s{font-size:11px;color:var(--muted);margin-top:3px}
+  .node .dot{width:8px;height:8px;border-radius:50%}
+  .node::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--api)}
+  .node.active{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-soft),0 12px 30px rgba(139,92,246,.25)}
+  .node.dim{opacity:.28}
+  .g-client::before{background:var(--client)} .g-client .dot{background:var(--client)}
+  .g-auth::before{background:var(--auth)} .g-auth .dot{background:var(--auth)}
+  .g-api::before{background:var(--api)} .g-api .dot{background:var(--api)}
+  .g-ai::before{background:var(--ai)} .g-ai .dot{background:var(--ai)}
+  .g-data::before{background:var(--data)} .g-data .dot{background:var(--data)}
+  .g-integration::before{background:var(--integration)} .g-integration .dot{background:var(--integration)}
+
+  .side{flex:1 1 300px;min-width:280px;max-width:380px;position:sticky;top:14px}
+  .pcard{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px}
+  .pcard h2{font-size:15px;margin:0 0 4px}
+  .pcard .ptag{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.5px;
+    padding:3px 8px;border-radius:6px;background:var(--primary-soft);color:var(--primary);margin-bottom:10px}
+  .pcard p{font-size:13.5px;line-height:1.6;color:#cfc9e0;margin:8px 0 0}
+  .flows{margin-top:16px}
+  .flows .lab{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px}
+  .fbtn{display:block;width:100%;text-align:left;margin-bottom:7px;padding:10px 12px;border-radius:10px;
+    background:var(--card);border:1px solid var(--border);color:var(--text);font-size:13px;cursor:pointer;
+    transition:border-color .2s,background .2s}
+  .fbtn:hover{border-color:var(--primary);background:var(--card2)}
+  .fbtn.on{border-color:var(--primary);background:var(--primary-soft)}
+  .fbtn small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+  .legend{display:flex;flex-wrap:wrap;gap:10px 14px;margin-top:14px;font-size:11.5px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:14px;line-height:1.5}
+  footer{padding:0 30px 30px;color:var(--muted);font-size:12px}
+  a{color:var(--primary)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">🎧</div>
+    <div>
+      <h1>RinoDesk — System Architecture</h1>
+      <div class="sub">AI-native customer support platform · click any component, or trace a flow →</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stage">
+    <div class="canvas" id="canvas">
+      <svg class="edges" id="edges" viewBox="0 0 1200 700" preserveAspectRatio="none">
+        <defs>
+          <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#5b5277"></path>
+          </marker>
+          <marker id="arrowA" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#8b5cf6"></path>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="pcard" id="panel">
+      <span class="ptag" id="ptag">Overview</span>
+      <h2 id="ptitle">How RinoDesk fits together</h2>
+      <p id="pdesc">RinoDesk turns customer messages into resolved tickets with the help of AI agents. Click any box to see what it does, or press a flow below to watch a request travel through the system.</p>
+
+      <div class="flows">
+        <div class="lab">Trace a flow</div>
+        <button class="fbtn" data-flow="login">🔐 Agent login<small>Browser → Google → API → session</small></button>
+        <button class="fbtn" data-flow="ticket">🎫 Ticket lifecycle<small>New ticket → AI agents → Gemini → saved + alerts</small></button>
+        <button class="fbtn" data-flow="kb">✨ Knowledge-grounded reply<small>Draft → KB grounding → Gemini → polished reply</small></button>
+        <button class="fbtn" data-flow="email">📧 Email → ticket<small>Inbound email webhook → API → ticket</small></button>
+        <button class="fbtn" id="resetBtn">↺ Reset view</button>
+      </div>
+
+      <div class="legend">
+        <span><i style="background:var(--client)"></i>Client</span>
+        <span><i style="background:var(--auth)"></i>Auth</span>
+        <span><i style="background:var(--api)"></i>API</span>
+        <span><i style="background:var(--ai)"></i>AI</span>
+        <span><i style="background:var(--data)"></i>Data</span>
+        <span><i style="background:var(--integration)"></i>Integrations</span>
+      </div>
+      <div class="hint">Tip: hover a box to highlight its connections. On a phone, the diagram scrolls sideways.</div>
+    </div>
+  </div>
+</div>
+
+<footer>RinoDesk · React + Vite · Express + PostgreSQL (Drizzle) · Google Gemini · Google Identity</footer>
+
+<script>
+const nodes = [
+  {id:'user', g:'client', x:30, y:300, w:150, h:74, t:'User / Customer', s:'Browser',
+   d:'Support agents sign in to manage tickets. Customers can submit tickets through the public form or by email — they never need an account.'},
+  {id:'frontend', g:'client', x:230, y:278, w:190, h:96, t:'React Frontend', s:'Vite · Tailwind · shadcn/ui',
+   d:'Single-page app with wouter routing and TanStack Query. Pages: Dashboard, Ticket Inbox, Ticket Detail, Knowledge Base, Resolution Tracker, Insights, Agent Chat, Settings. Every page requires login except the public Submit form.'},
+  {id:'auth', g:'auth', x:230, y:434, w:190, h:74, t:'Google Identity', s:'Sign in with Google',
+   d:'Google Identity Services issues a signed ID token in the browser. The backend verifies it and creates a session cookie — no passwords are ever stored.'},
+  {id:'api', g:'api', x:480, y:150, w:210, h:320, t:'API Server', s:'Express · Node.js · :8080',
+   d:'The Express API. A Postgres-backed session layer plus a requireAuth guard protect the private routes. Route groups: auth, tickets, collab (users / assign / notes / knowledge base / AI-enhance), tracker, inbound-email (public webhook), insights, Gemini chat, settings, agent runs, and health.'},
+  {id:'email', g:'api', x:480, y:516, w:210, h:74, t:'Email Webhook', s:'inbound-email → ticket',
+   d:'A public, token-protected webhook. An inbound-email service POSTs incoming mail here and it becomes a ticket automatically. Goes live once the app is deployed to a public URL.'},
+  {id:'pipeline', g:'ai', x:760, y:150, w:200, h:128, t:'AI Agent Pipeline', s:'5 sequential agents',
+   d:'TicketReader (categorize + summarize) → PolicyResearcher → ResponseDrafter → EscalationDetector, plus an InsightsGenerator for trends. Each agent run is logged for a full audit trail.'},
+  {id:'kb', g:'ai', x:760, y:312, w:200, h:80, t:'Knowledge Base', s:'AI grounding (RAG)',
+   d:'Your policy articles are injected into the AI when it drafts or enhances a reply, so responses stay accurate to your business instead of generic.'},
+  {id:'gemini', g:'ai', x:1010, y:200, w:160, h:84, t:'Google Gemini', s:'gemini-2.5-flash',
+   d:'Google’s LLM powers every agent: classification, policy research, reply drafting, escalation scoring, insights, and the one-click AI-enhance feature.'},
+  {id:'db', g:'data', x:760, y:438, w:200, h:96, t:'PostgreSQL', s:'Neon · Drizzle ORM',
+   d:'Tables: tickets, users, sessions, ticket_notes, resolutions, kb_articles, agent_runs, insights, conversations, messages, settings.'},
+  {id:'slack', g:'integration', x:1010, y:446, w:160, h:74, t:'Slack Alerts', s:'escalation webhook',
+   d:'When a ticket is scored as high escalation risk, an alert is posted to your Slack channel automatically so a human can step in fast.'},
+];
+
+const edges = [
+  {f:'user', t:'frontend', flows:['login','ticket','kb']},
+  {f:'frontend', t:'auth', flows:['login']},
+  {f:'auth', t:'api', flows:['login']},
+  {f:'frontend', t:'api', flows:['ticket','kb']},
+  {f:'email', t:'api', flows:['email']},
+  {f:'api', t:'pipeline', flows:['ticket']},
+  {f:'pipeline', t:'gemini', flows:['ticket']},
+  {f:'pipeline', t:'db', flows:['ticket']},
+  {f:'pipeline', t:'slack', flows:['ticket']},
+  {f:'api', t:'db', flows:['login','email']},
+  {f:'api', t:'kb', flows:['kb']},
+  {f:'kb', t:'gemini', flows:['kb']},
+];
+
+const flowInfo = {
+  login:{tag:'Flow',title:'Agent login',desc:'The agent opens the app → signs in with Google → the browser gets a signed token → the API verifies it and stores a session in PostgreSQL. From then on, protected pages and routes recognize them.'},
+  ticket:{tag:'Flow',title:'Ticket lifecycle',desc:'A new ticket reaches the API → the AI agent pipeline runs → each agent calls Google Gemini to classify, research, draft, and score escalation → results are saved to PostgreSQL → if risk is high, a Slack alert fires.'},
+  kb:{tag:'Flow',title:'Knowledge-grounded reply',desc:'An agent writes a rough draft → the API pulls your Knowledge Base articles → those are fed to Gemini as grounding → Gemini returns a polished reply that follows your real policies.'},
+  email:{tag:'Flow',title:'Email → ticket',desc:'An inbound-email service receives a customer email and POSTs it to the public webhook → the API creates a ticket from it → it appears in the inbox, ready for the agents. (Activates after deployment.)'},
+};
+
+const canvas = document.getElementById('canvas');
+const svg = document.getElementById('edges');
+const nodeEls = {};
+
+// render nodes
+nodes.forEach(n=>{
+  const el = document.createElement('div');
+  el.className = 'node g-'+n.g;
+  el.style.left = n.x+'px'; el.style.top = n.y+'px';
+  el.style.width = n.w+'px'; el.style.height = n.h+'px';
+  el.innerHTML = '<div class="t"><span class="dot"></span>'+n.t+'</div><div class="s">'+n.s+'</div>';
+  el.addEventListener('click',()=>selectNode(n.id));
+  el.addEventListener('mouseenter',()=>hoverNode(n.id));
+  el.addEventListener('mouseleave',clearHover);
+  canvas.appendChild(el);
+  nodeEls[n.id]=el;
+});
+
+// anchor points between two nodes based on relative position
+function anchors(a,b){
+  const ac={x:a.x+a.w/2,y:a.y+a.h/2}, bc={x:b.x+b.w/2,y:b.y+b.h/2};
+  const dx=bc.x-ac.x, dy=bc.y-ac.y;
+  let p1,p2;
+  if(Math.abs(dx)>=Math.abs(dy)){
+    if(dx>=0){p1={x:a.x+a.w,y:ac.y};p2={x:b.x,y:bc.y};}
+    else{p1={x:a.x,y:ac.y};p2={x:b.x+b.w,y:bc.y};}
+  }else{
+    if(dy>=0){p1={x:ac.x,y:a.y+a.h};p2={x:bc.x,y:b.y};}
+    else{p1={x:ac.x,y:a.y};p2={x:bc.x,y:b.y+b.h};}
+  }
+  return {p1,p2};
+}
+const nmap={}; nodes.forEach(n=>nmap[n.id]=n);
+const edgeEls=[];
+edges.forEach((e,i)=>{
+  const {p1,p2}=anchors(nmap[e.f],nmap[e.t]);
+  const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
+  const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+  path.setAttribute('d',`M${p1.x},${p1.y} Q${mx},${my} ${p2.x},${p2.y}`);
+  path.setAttribute('class','edge');
+  path.setAttribute('marker-end','url(#arrow)');
+  svg.appendChild(path);
+  edgeEls.push({el:path,e});
+});
+
+function selectNode(id){
+  clearFlow();
+  const n=nmap[id];
+  setPanel(groupName(n.g), n.t, n.d);
+  Object.values(nodeEls).forEach(el=>el.classList.remove('active','dim'));
+  edgeEls.forEach(({el,e})=>{el.classList.remove('active'); el.classList.add('dim');});
+  nodeEls[id].classList.add('active');
+  nodes.forEach(o=>{if(o.id!==id) nodeEls[o.id].classList.add('dim');});
+  edgeEls.forEach(({el,e})=>{
+    if(e.f===id||e.t===id){el.classList.remove('dim');el.classList.add('active');el.setAttribute('marker-end','url(#arrowA)');
+      nodeEls[e.f].classList.remove('dim');nodeEls[e.t].classList.remove('dim');}
+    else el.setAttribute('marker-end','url(#arrow)');
+  });
+}
+function hoverNode(id){
+  edgeEls.forEach(({el,e})=>{ if(e.f===id||e.t===id) el.classList.add('active'); });
+}
+function clearHover(){
+  if(activeFlow) return;
+  edgeEls.forEach(({el})=>{ if(!el.dataset.locked) el.classList.remove('active'); });
+}
+let activeFlow=null;
+function setFlow(flow){
+  activeFlow=flow;
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.toggle('on',b.dataset.flow===flow));
+  const info=flowInfo[flow]; setPanel(info.tag,info.title,info.desc);
+  const usedNodes=new Set();
+  edgeEls.forEach(({el,e})=>{
+    const on=e.flows.includes(flow);
+    el.classList.toggle('active',on); el.classList.toggle('dim',!on);
+    el.dataset.locked = on ? '1':'';
+    el.setAttribute('marker-end', on?'url(#arrowA)':'url(#arrow)');
+    if(on){usedNodes.add(e.f);usedNodes.add(e.t);}
+  });
+  nodes.forEach(n=>{
+    nodeEls[n.id].classList.remove('active');
+    nodeEls[n.id].classList.toggle('dim',!usedNodes.has(n.id));
+  });
+}
+function clearFlow(){
+  activeFlow=null;
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('on'));
+  edgeEls.forEach(({el})=>{el.dataset.locked='';});
+}
+function resetView(){
+  clearFlow();
+  Object.values(nodeEls).forEach(el=>el.classList.remove('active','dim'));
+  edgeEls.forEach(({el})=>{el.classList.remove('active','dim');el.setAttribute('marker-end','url(#arrow)');});
+  setPanel('Overview','How RinoDesk fits together','RinoDesk turns customer messages into resolved tickets with the help of AI agents. Click any box to see what it does, or press a flow below to watch a request travel through the system.');
+}
+function setPanel(tag,title,desc){
+  document.getElementById('ptag').textContent=tag;
+  document.getElementById('ptitle').textContent=title;
+  document.getElementById('pdesc').textContent=desc;
+}
+function groupName(g){return {client:'Client',auth:'Authentication',api:'Backend',ai:'AI',data:'Data',integration:'Integration'}[g]||g;}
+
+document.querySelectorAll('.fbtn[data-flow]').forEach(b=>{
+  b.addEventListener('click',()=>setFlow(b.dataset.flow));
+});
+document.getElementById('resetBtn').addEventListener('click',resetView);
+</script>
+</body>
+</html>
