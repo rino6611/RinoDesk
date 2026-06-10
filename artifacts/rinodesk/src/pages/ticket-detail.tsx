@@ -7,12 +7,28 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { formatTimeAgo, formatDate } from "@/lib/format";
-import { BrainCircuit, Play, CheckCircle2, AlertCircle, Save, Send, Sparkles, Loader2, Info } from "lucide-react";
+import { BrainCircuit, Play, CheckCircle2, AlertCircle, Save, Send, Sparkles, Loader2, Info, Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { CollabPanel } from "@/components/collab-panel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function suggestResolution(t: { category?: string | null; subject: string; body: string }) {
+  const text = `${t.category ?? ""} ${t.subject} ${t.body}`.toLowerCase();
+  if (/(double|duplicate|twice|charged)/.test(text)) return "Verify the duplicate charge and issue a refund (3–5 business days).";
+  if (/refund/.test(text)) return "Review refund eligibility per policy and process if within the window.";
+  if (/(expired|expiry)/.test(text)) return "Issue a new redemption code with a fresh expiry date.";
+  if (/(did not receive|didn't receive|never (arrived|received)|not received|resend)/.test(text)) return "Verify reward eligibility and resend the redemption email; ask guest to check spam.";
+  if (/(code|coupon).*(not working|rejected|error)|not working.*code/.test(text)) return "Check rate-code eligibility; apply the discount manually or send a replacement code.";
+  if (/(login|log in|sign in|password|verification|cannot find.*(account|reservation))/.test(text)) return "Verify account email and resend the verification link; confirm reservation appears.";
+  if (/(invoice|receipt|billing statement)/.test(text)) return "Generate and email an itemized invoice for the stay.";
+  if (/(unsubscribe|marketing email|spam)/.test(text)) return "Unsubscribe the guest from marketing emails and confirm.";
+  if (/(crash|error|bug|broken|not loading)/.test(text)) return "Reproduce the issue, escalate to engineering, and offer a manual workaround.";
+  if (/(positive|great|thank|amazing|five star)/.test(text)) return "Thank the guest and request a public review.";
+  if (/(update|change).*(email|address|name)/.test(text)) return "Update the account details and confirm with the guest.";
+  return "Acknowledge the issue, gather any missing details, and resolve per the closest policy.";
+}
 
 export default function TicketDetail() {
   const params = useParams();
@@ -30,6 +46,18 @@ export default function TicketDetail() {
   const [enhancing, setEnhancing] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [liveAgentStatus, setLiveAgentStatus] = useState<Record<string, string>>({});
+  const [copied, setCopied] = useState(false);
+
+  const copyEmail = async () => {
+    if (!ticket) return;
+    try {
+      await navigator.clipboard.writeText(ticket.customerEmail);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast({ title: "Couldn't copy", variant: "destructive" });
+    }
+  };
 
   const handleEditDraft = () => {
     setDraftContent(ticket?.draftResponse || "");
@@ -122,8 +150,14 @@ export default function TicketDetail() {
     return <div>Ticket not found</div>;
   }
 
+  const resolutionText =
+    ticket.status === "resolved"
+      ? (ticket.draftResponse || "Resolved")
+      : (ticket.draftResponse || suggestResolution(ticket));
+  const isSuggested = ticket.status !== "resolved" && !ticket.draftResponse;
+
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-12">
+    <div className="space-y-6 max-w-6xl mx-auto pb-12 rd-fade">
       <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -178,36 +212,17 @@ export default function TicketDetail() {
               ) : ticket.draftResponse ? (
                 <div className="space-y-4">
                   <div className="whitespace-pre-wrap text-sm border border-primary/20 p-4 rounded-md bg-background/50">{ticket.draftResponse}</div>
-                  <Button onClick={handleResolve} className="w-full gap-2"><Send className="h-4 w-4" /> Send & Resolve</Button>
+                  {ticket.status !== "resolved" && (
+                    <Button onClick={handleResolve} className="w-full gap-2"><Send className="h-4 w-4" /> Send & Resolve</Button>
+                  )}
                 </div>
               ) : (
                 <div className="text-sm text-muted-foreground py-8 text-center italic">Write a draft, or run agents to generate one with AI.</div>
               )}
             </CardContent>
           </Card>
-        </div>
-
-        <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2"><Info className="h-4 w-4 text-primary" /> Ticket Details</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Ticket #</span><span className="font-mono">{ticket.id}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Guest</span><span className="text-right">{ticket.customerName}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Email</span><span className="text-right truncate max-w-[150px]" title={ticket.customerEmail}>{ticket.customerEmail}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Received</span><span className="text-right">{formatDate(ticket.createdAt)}</span></div>
-              <div className="pt-2 border-t border-border"><div className="text-muted-foreground mb-1">Issue</div><div>{ticket.agentSummary || ticket.subject}</div></div>
-              <div className="pt-2 border-t border-border"><div className="text-muted-foreground mb-1">Resolution</div><div className="whitespace-pre-wrap">{ticket.draftResponse || (ticket.status === "resolved" ? "Resolved" : "Pending")}</div></div>
-            </CardContent>
-          </Card>
 
           <CollabPanel ticketId={ticket.id} assigneeId={(ticket as any).assigneeId ?? null} />
-
-          {ticket.escalationRisk && (
-            <Card className={ticket.escalationRisk === "high" ? "border-destructive bg-destructive/5" : ""}>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2"><AlertCircle className={`h-4 w-4 ${ticket.escalationRisk === "high" ? "text-destructive" : "text-muted-foreground"}`} /> Escalation Risk: <span className="uppercase font-bold">{ticket.escalationRisk}</span></CardTitle></CardHeader>
-              <CardContent><p className="text-sm">{ticket.escalationReason || "No specific reason detected."}</p></CardContent>
-            </Card>
-          )}
 
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Agent Runs</CardTitle></CardHeader>
@@ -231,6 +246,40 @@ export default function TicketDetail() {
               </div>
             </CardContent>
           </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="pb-1.5"><CardTitle className="text-xs font-medium flex items-center gap-2"><Info className="h-3.5 w-3.5 text-primary" /> Ticket Details</CardTitle></CardHeader>
+            <CardContent className="space-y-1.5 text-xs">
+              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Ticket #</span><span className="font-mono">{ticket.id}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Guest</span><span className="text-right">{ticket.customerName}</span></div>
+              <div className="flex justify-between gap-3 items-center">
+                <span className="text-muted-foreground">Email</span>
+                <button onClick={copyEmail} title="Click to copy"
+                  className="flex items-center gap-1.5 max-w-[170px] rounded px-1.5 py-0.5 -mr-1.5 hover:bg-secondary transition-colors group">
+                  <span className="truncate">{ticket.customerEmail}</span>
+                  {copied ? <Check className="h-3 w-3 text-green-500 shrink-0" /> : <Copy className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />}
+                </button>
+              </div>
+              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Received</span><span className="text-right">{formatDate(ticket.createdAt)}</span></div>
+              <div className="pt-2 border-t border-border"><div className="text-muted-foreground mb-0.5">Issue</div><div className="line-clamp-3">{ticket.agentSummary || ticket.subject}</div></div>
+              <div className="pt-2 border-t border-border">
+                <div className="text-muted-foreground mb-0.5 flex items-center gap-1.5">
+                  Resolution
+                  {isSuggested && <span className="text-[9px] uppercase tracking-wide bg-primary/15 text-primary px-1.5 py-0.5 rounded">Suggested</span>}
+                </div>
+                <div className="whitespace-pre-wrap line-clamp-5">{resolutionText}</div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {ticket.escalationRisk && (
+            <Card className={ticket.escalationRisk === "high" ? "border-destructive bg-destructive/5" : ""}>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2"><AlertCircle className={`h-4 w-4 ${ticket.escalationRisk === "high" ? "text-destructive" : "text-muted-foreground"}`} /> Escalation Risk: <span className="uppercase font-bold">{ticket.escalationRisk}</span></CardTitle></CardHeader>
+              <CardContent><p className="text-sm">{ticket.escalationReason || "No specific reason detected."}</p></CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
